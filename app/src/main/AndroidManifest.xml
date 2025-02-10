@@ -6,7 +6,7 @@
     <application
         android:icon="@drawable/icon" android:label="4 In A Row">
         <activity
-            android:name=".MainActivity" android:exported="true">
+            android:name=".Game" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
