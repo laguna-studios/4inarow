@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:icon="@drawable/icon" android:label="4 In A Row">
+        android:icon="@drawable/icon" android:label="4 In A Row" android:theme="@android:style/Theme.NoTitleBar">
         <activity
             android:name=".Game" android:exported="true">
             <intent-filter>
@@ -17,7 +17,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" />
-                <data android:host="lagunastudios.de" />
+                <data android:host="4iar.lagunastudios.de" />
             </intent-filter>
         </activity>
     </application>

@@ -8,9 +8,9 @@ android {
 
     defaultConfig {
         applicationId = "de.lagunastudios.fourinarow"
-        minSdk = 16
+        minSdk = 21
         targetSdk = 34
-        versionCode = 1
+        versionCode = 3
         versionName = "1.0"
     }
 
@@ -30,5 +30,4 @@ android {
     }
 }
 
-dependencies {
-}
+dependencies {}

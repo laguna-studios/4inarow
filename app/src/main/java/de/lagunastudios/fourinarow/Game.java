@@ -1,19 +1,14 @@
 package de.lagunastudios.fourinarow;
 
 import android.app.Activity;
-import android.content.Context;
-import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.SurfaceTexture;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
-
-import java.util.ArrayList;
 
 public class Game extends Activity implements View.OnTouchListener {
 
@@ -26,6 +21,19 @@ public class Game extends Activity implements View.OnTouchListener {
     Paint blue = new Paint();
 
     boolean you = false;
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        int[] game = new int[42];
+        int pos = 0;
+        for (int i = 0; i < 6; i++) {
+            for (int j = 0; j < 7; j++, pos++) {
+                game[pos] = mGameLoop.chips[i][j];
+            }
+        }
+        outState.putIntArray("game", game);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,6 +51,16 @@ public class Game extends Activity implements View.OnTouchListener {
         }
 
         mGameLoop = new GameLoop();
+        if (savedInstanceState != null && savedInstanceState.containsKey("game")) {
+            int[] game = savedInstanceState.getIntArray("game");
+            int pos = 0;
+            for (int i = 0; i < 6; i++) {
+                for (int j = 0; j < 7; j++, pos++) {
+                    mGameLoop.chips[i][j] = (byte) game[pos];
+                }
+            }
+        }
+
         mGameLoop.start();
 
         mTextureView = new TextureView(this);
@@ -65,91 +83,22 @@ public class Game extends Activity implements View.OnTouchListener {
         */
 
 
-        if (mGameLoop.winner != null) return true;
-
-        if (event.getAction() != MotionEvent.ACTION_UP) return true;
-        int x = (int) (event.getX() / (mGameLoop.mWidth / 7));
-        int y = 5;
-
-        while (y >= 0 && mGameLoop.chips[y][x] != 0) {
-            y--;
-        }
-        if (y >= 0) {
-            mGameLoop.chips[y][x] = (byte) (you ? 1 : -1);
-            you = !you;
-
-            if (getWinner() != 0) {
-                mGameLoop.winner = String.format("Player: %s won", getWinner());
-            }
-        }
+        mGameLoop.onInput(event);
         return true;
     }
 
-    public byte[][] getSequences() {
-        final byte[][] sequences = new byte[25][7];
-        int index = 0;
-
-        for (int row = 0; row < mGameLoop.chips.length; row++, index++) {
-            sequences[index] = mGameLoop.chips[row];
-        }
-        for (int column = 0; column < mGameLoop.chips[0].length; column++, index++) {
-            sequences[index] = new byte[7];
-            for (int row = 0; row < mGameLoop.chips.length; row++) {
-                sequences[index][row] = mGameLoop.chips[row][column];
-            }
-        }
-
-
-        sequences[index++] = new byte[]{mGameLoop.chips[3][0], mGameLoop.chips[2][1], mGameLoop.chips[1][2], mGameLoop.chips[0][3]};
-        sequences[index++] = new byte[]{mGameLoop.chips[4][0], mGameLoop.chips[3][1], mGameLoop.chips[2][2], mGameLoop.chips[1][3], mGameLoop.chips[0][4]};
-        sequences[index++] = new byte[]{mGameLoop.chips[5][0], mGameLoop.chips[4][1], mGameLoop.chips[3][2], mGameLoop.chips[2][3], mGameLoop.chips[1][4], mGameLoop.chips[0][5]};
-        sequences[index++] = new byte[]{mGameLoop.chips[5][1], mGameLoop.chips[4][2], mGameLoop.chips[3][3], mGameLoop.chips[2][4], mGameLoop.chips[1][5], mGameLoop.chips[0][6]};
-        sequences[index++] = new byte[]{mGameLoop.chips[5][2], mGameLoop.chips[4][3], mGameLoop.chips[3][4], mGameLoop.chips[2][5], mGameLoop.chips[1][6]};
-        sequences[index++] = new byte[]{mGameLoop.chips[5][3], mGameLoop.chips[4][4], mGameLoop.chips[3][5], mGameLoop.chips[2][6]};
-
-        sequences[index++] = new byte[]{mGameLoop.chips[2][0], mGameLoop.chips[3][1], mGameLoop.chips[4][2], mGameLoop.chips[5][3]};
-        sequences[index++] = new byte[]{mGameLoop.chips[1][0], mGameLoop.chips[2][1], mGameLoop.chips[3][2], mGameLoop.chips[4][3], mGameLoop.chips[5][4]};
-        sequences[index++] = new byte[]{mGameLoop.chips[0][0], mGameLoop.chips[1][1], mGameLoop.chips[2][2], mGameLoop.chips[3][3], mGameLoop.chips[4][4], mGameLoop.chips[5][5]};
-
-        sequences[index++] = new byte[]{mGameLoop.chips[0][1], mGameLoop.chips[1][2], mGameLoop.chips[2][3], mGameLoop.chips[3][4], mGameLoop.chips[4][5], mGameLoop.chips[5][6]};
-        sequences[index++] = new byte[]{mGameLoop.chips[0][2], mGameLoop.chips[1][3], mGameLoop.chips[2][4], mGameLoop.chips[3][5], mGameLoop.chips[4][6]};
-        sequences[index] = new byte[]{mGameLoop.chips[0][3], mGameLoop.chips[1][4], mGameLoop.chips[2][5], mGameLoop.chips[3][6]};
-
-
-        return sequences;
-    }
-
-    public int getWinner() {
-
-        byte[][] sequences = getSequences();
-
-        for (byte[] seq : sequences) {
-            byte player = 0;
-            byte distance = 0;
-            for (byte f : seq) {
-                if (f == player) {
-                    distance++;
-                } else {
-                    player = f;
-                    distance = 1;
-                }
-                if (distance >= 4 && player != 0) return player;
-            }
-        }
-
-        return 0;
-    }
-
     class GameLoop extends Thread implements TextureView.SurfaceTextureListener {
-
         private boolean mRunning = true;
         final private Object mLock = new Object();
 
         private SurfaceTexture mSurfaceTexture;
+        int d;
         int mWidth;
         int mHeight;
+        int xOffset;
+        int yOffset;
 
-        String winner;
+        int winner = 0;
 
         public byte[][] chips = {
                 {0,0,0,0,0,0,0},
@@ -159,6 +108,91 @@ public class Game extends Activity implements View.OnTouchListener {
                 {0,0,0,0,0,0,0},
                 {0,0,0,0,0,0,0},
         };
+
+        public byte[][] getSequences() {
+            final byte[][] sequences = new byte[25][7];
+            int index = 0;
+
+            for (int row = 0; row < chips.length; row++, index++) {
+                sequences[index] = chips[row];
+            }
+            for (int column = 0; column < chips[0].length; column++, index++) {
+                sequences[index] = new byte[7];
+                for (int row = 0; row < chips.length; row++) {
+                    sequences[index][row] = chips[row][column];
+                }
+            }
+
+            byte[][] c = mGameLoop.chips;
+
+            sequences[index++] = new byte[]{c[3][0], c[2][1], c[1][2], c[0][3]};
+            sequences[index++] = new byte[]{c[4][0], c[3][1], c[2][2], c[1][3], c[0][4]};
+            sequences[index++] = new byte[]{c[5][0], c[4][1], c[3][2], c[2][3], c[1][4], c[0][5]};
+            sequences[index++] = new byte[]{c[5][1], c[4][2], c[3][3], c[2][4], c[1][5], c[0][6]};
+            sequences[index++] = new byte[]{c[5][2], c[4][3], c[3][4], c[2][5], c[1][6]};
+            sequences[index++] = new byte[]{c[5][3], c[4][4], c[3][5], c[2][6]};
+
+            sequences[index++] = new byte[]{c[2][0], c[3][1], c[4][2], c[5][3]};
+            sequences[index++] = new byte[]{c[1][0], c[2][1], c[3][2], c[4][3], c[5][4]};
+            sequences[index++] = new byte[]{c[0][0], c[1][1], c[2][2], c[3][3], c[4][4], c[5][5]};
+
+            sequences[index++] = new byte[]{c[0][1], c[1][2], c[2][3], c[3][4], c[4][5], c[5][6]};
+            sequences[index++] = new byte[]{c[0][2], c[1][3], c[2][4], c[3][5], c[4][6]};
+            sequences[index] = new byte[]{c[0][3], c[1][4], c[2][5], c[3][6]};
+
+
+            return sequences;
+        }
+
+        public int getWinner() {
+
+            byte[][] sequences = getSequences();
+
+            for (byte[] seq : sequences) {
+                byte player = 0;
+                byte distance = 0;
+                for (byte f : seq) {
+                    if (f == player) {
+                        distance++;
+                    } else {
+                        player = f;
+                        distance = 1;
+                    }
+                    if (distance >= 4 && player != 0) return player;
+                }
+            }
+
+            return 0;
+        }
+
+        void onInput(MotionEvent event) {
+            if (event.getAction() != MotionEvent.ACTION_UP) return;
+
+            if (winner != 0) {
+                winner = 0;
+                for (int i = 0; i < chips.length; i++) {
+                    for (int j = 0; j < chips[0].length; j++) {
+                        chips[i][j] = 0;
+                    }
+                }
+                return;
+            }
+
+            int x = (int) event.getX();
+
+            if (x < xOffset || xOffset + d * 7 < x) return;
+            x = (x - xOffset) / d;
+
+            int y = 5;
+
+            while (y >= 0 && chips[y][x] != 0) {
+                y--;
+            }
+            if (y >= 0) {
+                chips[y][x] = (byte) (you ? 1 : -1);
+                you = !you;
+            }
+        }
 
         @Override
         public void run() {
@@ -175,11 +209,33 @@ public class Game extends Activity implements View.OnTouchListener {
                     }
                 }
 
-                update();
+                prepareUpdate();
             }
         }
 
-        private void update() {
+        private void update(Canvas canvas) {
+
+            d = mWidth / 7 < mHeight / 6 ? mWidth / 7 : mHeight / 6;
+            xOffset = (mWidth - d*7) / 2;
+            yOffset = (mHeight - d*6) / 2;
+
+            canvas.drawRect(0,0, mWidth, mHeight, blue);
+
+
+                for (int i = 0; i < 6; i++) {
+                    for (int j = 0; j < 7; j++) {
+                        canvas.drawCircle(xOffset + d/2 + (j*d),   yOffset + d/2 + (i*d), d/2-8, chips[i][j] == 0 ? white : chips[i][j] < 0 ? red : yellow);
+                    }
+                }
+
+
+
+            if ((winner = getWinner()) != 0) {
+                canvas.drawText(winner < 0 ? "Rot gewinnt" : "Gelb gewinnt", 50, 100, white);
+            }
+        }
+
+        private void prepareUpdate() {
             final Surface surface;
             synchronized (mLock) {
                 if (mSurfaceTexture == null) return;
@@ -187,24 +243,15 @@ public class Game extends Activity implements View.OnTouchListener {
             }
 
             while (true) {
-                final Canvas canvas = surface.lockCanvas(null);
-                if (canvas == null) break;
-
-                canvas.drawRect(0,0, mWidth, mHeight, blue);
-
-                int d = mWidth / 7 < mHeight / 6 ? mWidth / 7 : mHeight / 6;
-
-                for (int i = 0; i < 6; i++) {
-                    for (int j = 0; j < 7; j++) {
-                        canvas.drawCircle(d/2 + (j*d), 300 + d/2 + (i*d), d/2-8, chips[i][j] == 0 ? white : chips[i][j] < 0 ? red : yellow);
-                    }
-                 }
-
-                if (winner != null) {
-                    canvas.drawText(winner, 50, 100, white);
+                Canvas canvas;
+                try {
+                    canvas = surface.lockCanvas(null);
+                    if (canvas == null) break;
+                    update(canvas);
+                    surface.unlockCanvasAndPost(canvas);
+                } catch (IllegalArgumentException e) {
+                    break;
                 }
-
-                surface.unlockCanvasAndPost(canvas);
             }
 
             surface.release();
@@ -237,8 +284,6 @@ public class Game extends Activity implements View.OnTouchListener {
         }
 
         @Override
-        public void onSurfaceTextureUpdated(SurfaceTexture s) {
-
-        }
+        public void onSurfaceTextureUpdated(SurfaceTexture s) {}
     }
 }
