@@ -1,26 +1,33 @@
 package de.lagunastudios.fourinarow;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.SurfaceTexture;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.Socket;
+
 public class Game extends Activity implements View.OnTouchListener {
 
-    int id;
+    Multiplayer mMultiplayer;
     GameLoop mGameLoop;
     TextureView mTextureView;
     Paint red = new Paint();
     Paint yellow = new Paint();
     Paint white = new Paint();
     Paint blue = new Paint();
-
-    boolean you = false;
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
@@ -40,15 +47,15 @@ public class Game extends Activity implements View.OnTouchListener {
         super.onCreate(savedInstanceState);
 
         red.setColor(0xffff0000);
+        red.setTextSize(100);
+        red.setTextAlign(Paint.Align.CENTER);
         yellow.setColor(0xffDFF24D);
+        yellow.setTextSize(100);
+        yellow.setTextAlign(Paint.Align.CENTER);
         white.setColor(0xffffffff);
         white.setTextSize(100);
+        white.setTextAlign(Paint.Align.CENTER);
         blue.setColor(0xff0000ff);
-
-        id = getPreferences(0).getInt("id", -1);
-        if (id == -1) {
-            getPreferences(0).edit().putInt("id", 1).apply();
-        }
 
         mGameLoop = new GameLoop();
         if (savedInstanceState != null && savedInstanceState.containsKey("game")) {
@@ -63,6 +70,13 @@ public class Game extends Activity implements View.OnTouchListener {
 
         mGameLoop.start();
 
+        if (getIntent().getData() != null) {
+            mMultiplayer = new Multiplayer();
+            mMultiplayer.start();
+            mGameLoop.state = 1;
+        }
+
+
         mTextureView = new TextureView(this);
         mTextureView.setSurfaceTextureListener(mGameLoop);
         mTextureView.setOnTouchListener(this);
@@ -72,22 +86,13 @@ public class Game extends Activity implements View.OnTouchListener {
 
     @Override
     public boolean onTouch(View v, MotionEvent event) {
-        /*Intent sendIntent = new Intent();
-        sendIntent.setAction(Intent.ACTION_SEND);
-        sendIntent.putExtra(Intent.EXTRA_TEXT, "https://lagunastudios.de/4inarow/123");
-        sendIntent.setType("text/plain");
-
-        Intent shareIntent = Intent.createChooser(sendIntent, null);
-        startActivity(shareIntent);
-        return true;
-        */
-
-
         mGameLoop.onInput(event);
         return true;
     }
 
     class GameLoop extends Thread implements TextureView.SurfaceTextureListener {
+        private int state = 0;
+
         private boolean mRunning = true;
         final private Object mLock = new Object();
 
@@ -99,14 +104,15 @@ public class Game extends Activity implements View.OnTouchListener {
         int yOffset;
 
         int winner = 0;
+        boolean red = true;
 
         public byte[][] chips = {
-                {0,0,0,0,0,0,0},
-                {0,0,0,0,0,0,0},
-                {0,0,0,0,0,0,0},
-                {0,0,0,0,0,0,0},
-                {0,0,0,0,0,0,0},
-                {0,0,0,0,0,0,0},
+                {0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0},
+                {0, 0, 0, 0, 0, 0, 0},
         };
 
         public byte[][] getSequences() {
@@ -165,8 +171,35 @@ public class Game extends Activity implements View.OnTouchListener {
             return 0;
         }
 
+        void onMultiplayerInput(MotionEvent event) {
+            if (winner != 0) return;
+
+            int x = (int) event.getX();
+
+            if (x < xOffset || xOffset + d * 7 < x) return;
+            x = (x - xOffset) / d;
+
+            mMultiplayer.makeMove(x);
+        }
+
         void onInput(MotionEvent event) {
             if (event.getAction() != MotionEvent.ACTION_UP) return;
+
+            if (state == 0) {
+                if (mHeight / 3 * 1.4f + 100 < event.getY() && event.getY() < mHeight / 3 * 1.4f + 200) {
+                    mMultiplayer = new Multiplayer();
+                    mMultiplayer.start();
+                    return;
+                } else if (mHeight / 3 * 1.4f - 100 < event.getY() && event.getY() < mHeight / 3 * 1.4f) {
+                    state = 1;
+                    return;
+                }
+            }
+
+            if (mMultiplayer != null && mMultiplayer.inGame) {
+                onMultiplayerInput(event);
+                return;
+            }
 
             if (winner != 0) {
                 winner = 0;
@@ -175,6 +208,7 @@ public class Game extends Activity implements View.OnTouchListener {
                         chips[i][j] = 0;
                     }
                 }
+                state = 0;
                 return;
             }
 
@@ -189,8 +223,8 @@ public class Game extends Activity implements View.OnTouchListener {
                 y--;
             }
             if (y >= 0) {
-                chips[y][x] = (byte) (you ? 1 : -1);
-                you = !you;
+                chips[y][x] = (byte) (red ? -1 : 1);
+                red = !red;
             }
         }
 
@@ -215,23 +249,40 @@ public class Game extends Activity implements View.OnTouchListener {
 
         private void update(Canvas canvas) {
 
+            if (state == 0) {
+                canvas.drawRect(0, 0, mWidth, mHeight, blue);
+                white.setTextSize(200);
+                canvas.drawText("4 In A Row", mWidth/2, mHeight / 3, white);
+                white.setTextSize(100);
+                canvas.drawText("Local Game", mWidth/2, mHeight / 3 * 1.4f, white);
+                canvas.drawText("Online Game", mWidth/2, mHeight / 3 * 1.4f + 200, white);
+                return;
+            }
+
             d = mWidth / 7 < mHeight / 6 ? mWidth / 7 : mHeight / 6;
-            xOffset = (mWidth - d*7) / 2;
-            yOffset = (mHeight - d*6) / 2;
+            xOffset = (mWidth - d * 7) / 2;
+            yOffset = (mHeight - d * 6) / 2;
 
-            canvas.drawRect(0,0, mWidth, mHeight, blue);
+            canvas.drawRect(0, 0, mWidth, mHeight, blue);
 
 
-                for (int i = 0; i < 6; i++) {
-                    for (int j = 0; j < 7; j++) {
-                        canvas.drawCircle(xOffset + d/2 + (j*d),   yOffset + d/2 + (i*d), d/2-8, chips[i][j] == 0 ? white : chips[i][j] < 0 ? red : yellow);
-                    }
+            for (int i = 0; i < 6; i++) {
+                for (int j = 0; j < 7; j++) {
+                    canvas.drawCircle(xOffset + d / 2 + (j * d), yOffset + d / 2 + (i * d), d / 2 - 8, chips[i][j] == 0 ? white : chips[i][j] < 0 ? Game.this.red : yellow);
                 }
-
+            }
 
 
             if ((winner = getWinner()) != 0) {
-                canvas.drawText(winner < 0 ? "Rot gewinnt" : "Gelb gewinnt", 50, 100, white);
+                if (mMultiplayer != null && mMultiplayer.inGame) canvas.drawText(winner == mMultiplayer.color ? "You win" : "You lose", mWidth/2, 100, white);
+                else canvas.drawText(winner == -1 ? "Red wins" : "Yellow wins", mWidth/2, 100, white);
+            }
+
+            if (mMultiplayer != null && mMultiplayer.myTurn != null) {
+                canvas.drawText(mMultiplayer.myTurn ? "My Turn" : "Opponent's turn", mWidth/2, mHeight-white.descent(), (mMultiplayer.myTurn && mMultiplayer.color == -1) || (!mMultiplayer.myTurn && mMultiplayer.color == 1) ? Game.this.red : yellow);
+            } else {
+                canvas.drawText(red ? "Red's Turn" : "Yellow's turn", mWidth/2, mHeight-white.descent(), red ? Game.this.red : yellow);
+
             }
         }
 
@@ -284,6 +335,129 @@ public class Game extends Activity implements View.OnTouchListener {
         }
 
         @Override
-        public void onSurfaceTextureUpdated(SurfaceTexture s) {}
+        public void onSurfaceTextureUpdated(SurfaceTexture s) {
+        }
+    }
+
+    class Multiplayer extends Thread {
+
+        private final Object lock = new Object();
+        boolean inGame = false;
+        Socket socket;
+        Integer move;
+        String playerId;
+        String gameId;
+        Boolean myTurn;
+        Integer color;
+
+        BufferedReader reader;
+        BufferedWriter writer;
+
+        @Override
+        public void run() {
+            try {
+                socket = new Socket("4iar.lagunastudios.de", 9090);
+                reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
+
+                helloOrRegister();
+
+                if (getIntent().getData() == null) {
+                    create();
+                    return;
+                }
+                gameId = getIntent().getData().getPath().split("/")[1];
+
+                game();
+                while (true) {
+                    if (!myTurn) {
+                        listen(reader.readLine());
+                    } else if (move == null) {
+                        sleep(500);
+                    } else {
+                        update();
+                    }
+                }
+
+
+            } catch (Exception e) {
+                Log.d("FLO", e.toString());
+                throw new RuntimeException(e);
+            }
+
+        }
+
+        private void update() throws IOException {
+            synchronized (lock) {
+                writer.write(String.format("update:%s:%s\n", gameId, move.toString()));
+                writer.flush();
+                myTurn = false;
+                move = null;
+            }
+        }
+
+        private void create() throws IOException {
+                writer.write("create\n");
+                writer.flush();
+                String gameId = reader.readLine();
+
+                Intent sendIntent = new Intent();
+                sendIntent.setAction(Intent.ACTION_SEND);
+                sendIntent.putExtra(Intent.EXTRA_TEXT, String.format("https://4iar.lagunastudios.de/%s", gameId));
+                sendIntent.setType("text/plain");
+                Intent shareIntent = Intent.createChooser(sendIntent, null);
+                startActivity(shareIntent);
+        }
+
+        private void helloOrRegister() throws IOException {
+            playerId = getPreferences(0).getString("id", null);
+            if (playerId == null) {
+                register();
+            } else {
+                hello();
+            }
+
+        }
+
+        private void register() throws IOException {
+            writer.write("register\n");
+            writer.flush();
+            playerId = reader.readLine();
+            getPreferences(0).edit().putString("id", playerId).apply();
+            Log.d("FLO", String.format("Registered: %s", playerId));
+        }
+
+        private void hello() throws IOException {
+            writer.write("hello:"+playerId+"\n");
+            writer.flush();
+        }
+
+        private void game() throws IOException {
+            writer.write("game:" + gameId + "\n");
+            writer.flush();
+            listen(reader.readLine());
+        }
+
+        private void listen(String msg) {
+            Log.d("FLO", msg);
+            String[] parts = msg.split(":");
+            String[] board = parts[3].substring(1, parts[3].length()-1).split(",");
+            int pos = 0;
+            for (int y = 0; y < mGameLoop.chips.length; y++) {
+                for (int x = 0; x < mGameLoop.chips[0].length; x++) {
+                    mGameLoop.chips[y][x] = Byte.parseByte(board[pos++].strip());
+                }
+            }
+            inGame = true;
+            color = parts[0].equals(playerId) ? -1 : 1;
+            myTurn = parts[Integer.parseInt(parts[2])].equals(playerId);
+        }
+
+        public void makeMove(int x) {
+            if (myTurn == null || !myTurn) return;
+            synchronized (lock) {
+                move = x;
+            }
+        }
     }
 }
